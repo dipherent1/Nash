@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Body, Depends
 from pydantic import BaseModel, Field
 from typing import Optional, Literal
 from datetime import date, datetime
@@ -69,8 +69,8 @@ ActionType = Literal[
 )
 async def webhook(
     action: ActionType,
-    query: CheckAvailabilityQuery = CheckAvailabilityQuery(),
-    body: Optional[dict] = None,
+    query: CheckAvailabilityQuery = Depends(),
+    body: Optional[dict] = Body(default=None),
 ):
     global appointment_counter
 
