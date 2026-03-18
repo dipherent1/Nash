@@ -13,6 +13,7 @@ class SearchClient(BaseModel):
 @app.post("/SearchClient")
 async def submit_item(item: SearchClient):
     mock_data = {
+        "record_found": True,
         "user_id": 10293,
         "name": "John Doe",
         "phone": item.phone,  # Returning the parameter passed by the user
