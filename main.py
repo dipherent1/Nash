@@ -1,7 +1,7 @@
-from fastapi import FastAPI, HTTPException, Body
-from pydantic import BaseModel
-from typing import List, Optional
-from datetime import date, datetime, timedelta
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
+from typing import Optional, Literal
+from datetime import date, datetime
 import logging
 
 # Setup logging
@@ -25,143 +25,144 @@ appointment_counter = 1
 
 
 # Models
-class PhoneRequestBody(BaseModel):
-    phone_number: str = "123-456-7890"
+class CheckAvailabilityQuery(BaseModel):
+    isEmergency: Optional[bool] = False
 
 
-# Endpoints
-@app.get(
-    "/get_available_appointment",
-    summary="Get Available Appointments",
-    description="Retrieve available appointment slots for a specific day or a date range.",
+class CheckAvailabilityBody(BaseModel):
+    target_date: Optional[date] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+
+
+class CreateClientBody(BaseModel):
+    client_first_name: str = Field(..., min_length=1)
+    client_last_name: str = Field(..., min_length=1)
+    client_phone: str = Field(..., min_length=5)
+
+
+class BookAppointmentBody(BaseModel):
+    client_first_name: str = Field(..., min_length=1)
+    client_last_name: str = Field(..., min_length=1)
+    client_phone: str = Field(..., min_length=5)
+    appointment_datetime: datetime
+
+
+class CancelAppointmentBody(BaseModel):
+    phone: str = Field(..., min_length=5)
+    uid: str = Field(..., min_length=3)
+
+
+ActionType = Literal[
+    "checkAvailability",
+    "createClient",
+    "bookAppointment",
+    "cancelAppointment",
+]
+
+
+# Single endpoint with action-based responses
+@app.post(
+    "/webhook",
+    summary="Single endpoint for all actions",
+    description="Use query param 'action' to route requests and return different mock responses.",
 )
-async def get_available_appointment(
-    target_date: Optional[date] = None,
-    start_date: Optional[date] = None,
-    end_date: Optional[date] = None,
+async def webhook(
+    action: ActionType,
+    query: CheckAvailabilityQuery = CheckAvailabilityQuery(),
+    body: Optional[dict] = None,
 ):
-    """
-    Get available appointments.
-    - If target_date is provided, returns two slots for that day.
-    - If start_date and end_date are provided, returns one slot for that range.
-    """
-    results = []
-
-    if target_date:
-        # Specific day: make two
-        slot1 = {"date": target_date.isoformat(), "time": "09:00", "available": True}
-        slot2 = {"date": target_date.isoformat(), "time": "14:00", "available": True}
-        results = [slot1, slot2]
-        logger.info(f"Retrieved 2 slots for specific day: {target_date}")
-
-    elif start_date and end_date:
-        # Range: make one (e.g., middle of the range)
-        mid_date = start_date + (end_date - start_date) / 2
-        slot = {"date": mid_date.isoformat(), "time": "11:00", "available": True}
-        results = [slot]
-        logger.info(f"Retrieved 1 slot for range: {start_date} to {end_date}")
-
-    else:
-        # Default: if nothing provided, return a sample
-        today = date.today()
-        results = [{"date": today.isoformat(), "time": "10:00", "available": True}]
-        logger.info("Retrieved default slot")
-
-    for res in results:
-        logger.info(f"Slot: {res}")
-
-    return results
-
-
-@app.post(
-    "/make_appointment",
-    summary="Make a New Appointment",
-    description="Create a new appointment entry using a user's phone number.",
-)
-async def make_appointment(body: PhoneRequestBody):
-    """
-    Create an appointment using phone number.
-    """
     global appointment_counter
-    new_id = appointment_counter
-    appointments[new_id] = {
-        "phone_number": body.phone_number,
-        "date": (date.today() + timedelta(days=1)).isoformat(),
-        "time": "10:00",
-    }
-    appointment_counter += 1
-    logger.info(f"Created appointment for: {body.phone_number} (ID: {new_id})")
-    return {
-        "message": "Appointment created",
-        "id": new_id,
-        "details": appointments[new_id],
-    }
 
+    if action == "checkAvailability":
+        payload = CheckAvailabilityBody(**(body or {}))
+        results = []
 
-@app.post(
-    "/update_appointment",
-    summary="Update Existing Appointment",
-    description="Update an existing appointment's details by searching for the user's phone number.",
-)
-async def update_appointment(body: PhoneRequestBody):
-    """
-    Update appointment using phone number.
-    In this mock, we just find the first one with this phone and 'refresh' it.
-    """
-    found_id = None
-    for app_id, details in appointments.items():
-        if details["phone_number"] == body.phone_number:
-            found_id = app_id
-            break
+        if payload.target_date:
+            slot1 = {
+                "date": payload.target_date.isoformat(),
+                "time": "09:00",
+                "available": True,
+            }
+            slot2 = {
+                "date": payload.target_date.isoformat(),
+                "time": "14:00",
+                "available": True,
+            }
+            results = [slot1, slot2]
+            logger.info(f"Retrieved 2 slots for specific day: {payload.target_date}")
+        elif payload.start_date and payload.end_date:
+            mid_date = payload.start_date + (payload.end_date - payload.start_date) / 2
+            slot = {"date": mid_date.isoformat(), "time": "11:00", "available": True}
+            results = [slot]
+            logger.info(
+                f"Retrieved 1 slot for range: {payload.start_date} to {payload.end_date}"
+            )
+        else:
+            today = date.today()
+            results = [{"date": today.isoformat(), "time": "10:00", "available": True}]
+            logger.info("Retrieved default slot")
 
-    if not found_id:
-        logger.warning(
-            f"Update failed: No appointment found for phone {body.phone_number}"
+        return {"action": action, "isEmergency": query.isEmergency, "slots": results}
+
+    if action == "createClient":
+        payload = CreateClientBody(**(body or {}))
+        logger.info(
+            f"Created client: {payload.client_first_name} {payload.client_last_name}"
         )
-        raise HTTPException(
-            status_code=404, detail="No appointment found for this phone number"
-        )
+        return {
+            "action": action,
+            "client": {
+                "first_name": payload.client_first_name,
+                "last_name": payload.client_last_name,
+                "phone": payload.client_phone,
+            },
+            "status": "created",
+        }
 
-    # Just update the time as a 'mock' update
-    appointments[found_id]["time"] = "15:30"
-    logger.info(f"Updated appointment ID {found_id} for phone: {body.phone_number}")
-    return {
-        "message": "Appointment updated",
-        "id": found_id,
-        "details": appointments[found_id],
-    }
+    if action == "bookAppointment":
+        payload = BookAppointmentBody(**(body or {}))
+        new_id = appointment_counter
+        appointments[new_id] = {
+            "phone_number": payload.client_phone,
+            "date": payload.appointment_datetime.date().isoformat(),
+            "time": payload.appointment_datetime.time().strftime("%H:%M"),
+        }
+        appointment_counter += 1
+        logger.info(f"Booked appointment ID {new_id} for phone: {payload.client_phone}")
+        return {
+            "action": action,
+            "message": "Appointment booked",
+            "uid": f"apt_{new_id}",
+            "details": appointments[new_id],
+        }
 
+    if action == "cancelAppointment":
+        payload = CancelAppointmentBody(**(body or {}))
+        found_id = None
+        for app_id, details in appointments.items():
+            if details["phone_number"] == payload.phone:
+                found_id = app_id
+                break
 
-@app.post(
-    "/cancel_appointment",
-    summary="Cancel Appointment",
-    description="Remove an existing appointment using the user's phone number.",
-)
-async def cancel_appointment(body: PhoneRequestBody):
-    """
-    Cancel appointment using phone number.
-    """
-    found_id = None
-    for app_id, details in appointments.items():
-        if details["phone_number"] == body.phone_number:
-            found_id = app_id
-            break
+        if not found_id:
+            logger.warning(
+                f"Cancel failed: No appointment found for phone {payload.phone}"
+            )
+            raise HTTPException(
+                status_code=404, detail="No appointment found for this phone number"
+            )
 
-    if not found_id:
-        logger.warning(
-            f"Cancel failed: No appointment found for phone {body.phone_number}"
-        )
-        raise HTTPException(
-            status_code=404, detail="No appointment found for this phone number"
-        )
+        deleted_details = appointments.pop(found_id)
+        logger.info(f"Cancelled appointment ID {found_id} for phone: {payload.phone}")
+        return {
+            "action": action,
+            "message": "Appointment cancelled",
+            "uid": payload.uid,
+            "details": deleted_details,
+        }
 
-    deleted_details = appointments.pop(found_id)
-    logger.info(f"Cancelled appointment ID {found_id} for phone: {body.phone_number}")
-    return {
-        "message": "Appointment cancelled",
-        "id": found_id,
-        "details": deleted_details,
-    }
+    raise HTTPException(status_code=400, detail="Unsupported action")
 
 
 if __name__ == "__main__":
