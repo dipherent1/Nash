@@ -34,6 +34,12 @@ class SearchAppointment(BaseModel):
     date: Optional[str] = None
 
 
+class CancelAppointment(BaseModel):
+    appointment_id: str
+    date: str
+    phone: str
+
+
 @app.post("/SearchClient")
 async def submit_item(item: SearchClient):
     mock_data = {
@@ -151,6 +157,19 @@ async def search_appointment(item: SearchAppointment):
                 "status": "pending",
             },
         ]
+    }
+
+    return mock_data
+
+
+@app.post("/CancelAppointment")
+async def cancel_appointment(item: CancelAppointment):
+    # Cancel the appointment based on the provided appointment ID, date, and phone
+    mock_data = {
+        "cancellation_result": "success",
+        "appointment_id": item.appointment_id,  # Returning the parameter passed by the user
+        "date": item.date,  # Returning the parameter passed by the user
+        "phone": item.phone,  # Returning the parameter passed by the user
     }
 
     return mock_data
