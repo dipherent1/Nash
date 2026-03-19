@@ -21,6 +21,12 @@ class BookAppointment(BaseModel):
     appointment_datetime: str
     client_last_name: str
     client_phone: str
+    client_branch: str
+
+
+class ValidateAppointment(BaseModel):
+    date: str
+    branch: str
 
 
 @app.post("/SearchClient")
@@ -76,6 +82,18 @@ async def book_appointment(item: BookAppointment):
         "client_phone": item.client_phone,  # Returning the parameter passed by the user
         "appointment_datetime": item.appointment_datetime,  # Returning the parameter passed by the user
         "status": "confirmed",
+    }
+
+    return mock_data
+
+
+@app.post("/Validate")
+async def validate_appointment(item: ValidateAppointment):
+    # Validate the appointment based on the provided date and branch
+    mock_data = {
+        "validation_result": "valid",
+        "date": item.date,  # Returning the parameter passed by the user
+        "branch": item.branch,  # Returning the parameter passed by the user
     }
 
     return mock_data
